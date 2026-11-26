@@ -1,0 +1,96 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Release version (defaults to the project version)
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Resolve release version
+        id: release
+        shell: pwsh
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+        run: |
+          [xml]$project = Get-Content 'src/LuaToolsGui/LuaToolsGui.csproj'
+          $projectVersion = $project.Project.PropertyGroup |
+            Where-Object { $_.Version } |
+            Select-Object -First 1 -ExpandProperty Version
+
+          if ($env:GITHUB_EVENT_NAME -eq 'push') {
+            $tag = $env:GITHUB_REF_NAME
+            if ($tag -notmatch '^v(?<version>\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)$') {
+              throw "Expected a version tag such as v1.2.3; got '$tag'."
+            }
+            $version = $Matches.version
+          } else {
+            $version = $env:RELEASE_VERSION
+            if ([string]::IsNullOrWhiteSpace($version)) {
+              $version = $projectVersion
+            }
+            $version = $version -replace '^v', ''
+            if ($version -notmatch '^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$') {
+              throw "Expected a version such as 1.2.3; got '$version'."
+            }
+          }
+
+          "version=$version" >> $env:GITHUB_OUTPUT
+          "tag=v$version" >> $env:GITHUB_OUTPUT
+
+      - name: Publish framework-dependent Windows app
+        run: >-
+          dotnet publish src/LuaToolsGui/LuaToolsGui.csproj
+          --configuration Release
+          --runtime win-x64
+          --self-contained false
+          --output publish
+          -p:Version=${{ steps.release.outputs.version }}
+
+      - name: Install Velopack CLI
+        run: dotnet tool install --global vpk --version 1.2.161
+
+      - name: Package Velopack installer
+        run: >-
+          vpk pack
+          --packId LuaTools
+          --packVersion ${{ steps.release.outputs.version }}
+          --packDir publish
+          --mainExe LuaTools.exe
+          --outputDir Releases
+
+      - name: Verify setup executable
+        shell: pwsh
+        run: |
+          $setup = 'Releases/LuaTools-Setup.exe'
+          if (-not (Test-Path $setup -PathType Leaf)) {
+            throw "Velopack did not produce the expected $setup."
+          }
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.release.outputs.tag }}
+          target_commitish: ${{ github.sha }}
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          files: Releases/*

@@ -19,9 +19,11 @@ dotnet test
 
 ### Releases
 
-Official builds are packaged and signed by the maintainers, so the release tooling isn't part of
-this repo. Released builds are framework-dependent (~10 MB) and the setup auto-installs the .NET 8
-Desktop Runtime on a clean machine; the app then self-updates through Velopack.
+GitHub Releases are built by `.github/workflows/release.yml` using Velopack. Push a `v*` version
+tag to build and publish a release, or run the workflow manually and optionally supply a version
+(otherwise it uses the project version). The workflow publishes the framework-dependent Windows
+app and Velopack packages, including `LuaTools-Setup.exe`; the setup bootstraps the .NET 8 Desktop
+Runtime on a clean machine, and the installed app self-updates through Velopack.
 
 To produce a local build for testing, `dotnet publish -c Release` is enough.
 
