@@ -76,14 +76,20 @@ jobs:
           --packVersion ${{ steps.release.outputs.version }}
           --packDir publish
           --mainExe LuaTools.exe
+          --runtime win-x64
           --outputDir Releases
 
       - name: Verify setup executable
         shell: pwsh
         run: |
-          $setup = 'Releases/LuaTools-Setup.exe'
-          if (-not (Test-Path $setup -PathType Leaf)) {
-            throw "Velopack did not produce the expected $setup."
+          $velopackSetup = 'Releases/LuaTools-win-Setup.exe'
+          $releaseSetup = 'Releases/LuaTools-Setup.exe'
+          if (-not (Test-Path $velopackSetup -PathType Leaf)) {
+            throw "Velopack did not produce the expected $velopackSetup."
+          }
+          Move-Item -LiteralPath $velopackSetup -Destination $releaseSetup
+          if (-not (Test-Path $releaseSetup -PathType Leaf)) {
+            throw "Could not create the expected release asset $releaseSetup."
           }
 
       - name: Create GitHub Release
